@@ -17,25 +17,28 @@
    6. Start advertising.
 
    In this example rxValue is the data received (only accessible inside that function).
-   And txValue is the data to be sent, in this example just a byte incremented every second. 
+   And txBuffer is a array of bytes to be sent from Serial to BLE.
 */
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
 
+// TODO: check why it does fail with smaller values
+#define SEND_BUFFER_SIZE 256
+
 BLEServer *pServer = NULL;
 BLECharacteristic * pTxCharacteristic;
 bool deviceConnected = false;
 bool oldDeviceConnected = false;
-uint8_t txValue = 0;
+uint8_t txBuffer[SEND_BUFFER_SIZE] = { 0 };
 
 // See the following for generating UUIDs:
 // https://www.uuidgenerator.net/
 
-#define SERVICE_UUID           "6E400001-B5A3-F393-E0A9-E50E24DCCA9E" // UART service UUID
-#define CHARACTERISTIC_UUID_RX "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
-#define CHARACTERISTIC_UUID_TX "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"
+#define SERVICE_UUID           "0000ff00-0000-1000-8000-00805f9b34fb" // UART service UUID
+#define CHARACTERISTIC_UUID_RX "0000ff01-0000-1000-8000-00805f9b34fb"
+#define CHARACTERISTIC_UUID_TX "0000ff02-0000-1000-8000-00805f9b34fb"
 
 
 class MyServerCallbacks: public BLEServerCallbacks {
@@ -80,16 +83,16 @@ void setup() {
 
   // Create a BLE Characteristic
   pTxCharacteristic = pService->createCharacteristic(
-										CHARACTERISTIC_UUID_TX,
-										BLECharacteristic::PROPERTY_NOTIFY
-									);
+                    CHARACTERISTIC_UUID_TX,
+                    BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_READ
+                  );
                       
   pTxCharacteristic->addDescriptor(new BLE2902());
 
   BLECharacteristic * pRxCharacteristic = pService->createCharacteristic(
-											 CHARACTERISTIC_UUID_RX,
-											BLECharacteristic::PROPERTY_WRITE
-										);
+                       CHARACTERISTIC_UUID_RX,
+                      BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR
+                    );
 
   pRxCharacteristic->setCallbacks(new MyCallbacks());
 
@@ -103,23 +106,24 @@ void setup() {
 
 void loop() {
 
-    if (deviceConnected) {
-        pTxCharacteristic->setValue(&txValue, 1);
-        pTxCharacteristic->notify();
-        txValue++;
-		delay(10); // bluetooth stack will go into congestion, if too many packets are sent
-	}
+  int availableBytes = Serial.available() % SEND_BUFFER_SIZE;
+  if (deviceConnected && availableBytes > 0) {
+      Serial.readBytes(txBuffer, availableBytes);
+      pTxCharacteristic->setValue(txBuffer, availableBytes);
+      pTxCharacteristic->notify();
+    delay(10); // bluetooth stack will go into congestion, if too many packets are sent
+  }
 
-    // disconnecting
-    if (!deviceConnected && oldDeviceConnected) {
-        delay(500); // give the bluetooth stack the chance to get things ready
-        pServer->startAdvertising(); // restart advertising
-        Serial.println("start advertising");
-        oldDeviceConnected = deviceConnected;
-    }
-    // connecting
-    if (deviceConnected && !oldDeviceConnected) {
-		// do stuff here on connecting
-        oldDeviceConnected = deviceConnected;
-    }
+  // disconnecting
+  if (!deviceConnected && oldDeviceConnected) {
+      delay(500); // give the bluetooth stack the chance to get things ready
+      pServer->startAdvertising(); // restart advertising
+      Serial.println("start advertising");
+      oldDeviceConnected = deviceConnected;
+  }
+  // connecting
+  if (deviceConnected && !oldDeviceConnected) {
+  // do stuff here on connecting
+      oldDeviceConnected = deviceConnected;
+  }
 }
