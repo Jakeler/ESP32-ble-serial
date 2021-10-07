@@ -19,6 +19,7 @@
    In this example rxValue is the data received (only accessible inside that function).
    And txBuffer is a array of bytes to be sent from Serial to BLE.
 */
+#include <Arduino.h>
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
@@ -67,16 +68,79 @@ class MyCallbacks: public BLECharacteristicCallbacks {
     }
 };
 
+class MySecurity: public BLESecurityCallbacks {
+  public:
+    // ~BLESecurityCallbacks() {};
+    /**
+     * @brief Its request from peer device to input authentication pin code displayed on peer device.
+     * It requires that our device is capable to input 6-digits code by end user
+     * @return Return 6-digits integer value from input device
+     * only for IN capabilty
+     */
+    uint32_t onPassKeyRequest() {
+      Serial.println("Got passKey request, sending 000000");
+      delay(5000); // TODO: Serial input
+      return 0;
+    }
+
+    /**
+     * @brief Provide us 6-digits code to perform authentication.
+     * It requires that our device is capable to display this code to end user
+     * @param
+     * only for OUT capabilty
+     */
+    void onPassKeyNotify(uint32_t pass_key) {
+      Serial.println("Notify PIN:" + String(pass_key));
+    }
+
+    /**
+     * @brief Here we can make decision if we want to let negotiate authorization with peer device or not
+     * return Return true if we accept this peer device request
+     */
+    bool onSecurityRequest() {
+      Serial.println("Got security request");
+      return false;
+    }
+
+    /**
+     * Display and confirm pin, for IO capability
+     */
+    bool onConfirmPIN(uint32_t pin) {
+      Serial.println("Confirming PIN:" + String(pin));
+      for (size_t i = 0; i < 5; i++){
+        Serial.print(".");
+        delay(1000);
+      }
+      Serial.println(" OK");
+      return true; // TODO: real confirmation
+    }
+
+    /**
+     * Provide us information when authentication process is completed
+     */
+    void onAuthenticationComplete(esp_ble_auth_cmpl_t auth) {
+      Serial.println("Auth " + String(auth.success? "successful":"FAILED"));
+    }
+};
+
 
 void setup() {
   Serial.begin(115200);
 
   // Create the BLE Device
-  BLEDevice::init("UART Service");
+  BLEDevice::init("My UART Service");
+  BLEDevice::setEncryptionLevel(esp_ble_sec_act_t::ESP_BLE_SEC_ENCRYPT_MITM);
+  BLEDevice::setSecurityCallbacks(new MySecurity());
+
+  BLESecurity *bleSec = new BLESecurity();
+  bleSec->setCapability(ESP_IO_CAP_IO); // Display yes/no on both devices
+  bleSec->setAuthenticationMode(ESP_LE_AUTH_REQ_SC_MITM_BOND);
+	bleSec->setInitEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
 
   // Create the BLE Server
   pServer = BLEDevice::createServer();
   pServer->setCallbacks(new MyServerCallbacks());
+  
 
   // Create the BLE Service
   BLEService *pService = pServer->createService(SERVICE_UUID);
