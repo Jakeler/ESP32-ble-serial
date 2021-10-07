@@ -98,20 +98,16 @@ void setup() {
 
   // Start advertising
   pServer->getAdvertising()->start();
-  Serial.println("Waiting a client connection to serialise...");
+  Serial.println("Waiting a client connection to notify...");
 }
 
 void loop() {
 
-    while (deviceConnected) {
-      if (Serial.available() > 0) {
-        for (int i = 0; i < Serial.available(); i++) {
-          txValue = Serial.read();
-          pTxCharacteristic->setValue(&txValue, 1);
-          pTxCharacteristic->notify();
-        }
-      }
-      delay(10); // bluetooth stack will go into congestion, if too many packets are sent
+    if (deviceConnected) {
+        pTxCharacteristic->setValue(&txValue, 1);
+        pTxCharacteristic->notify();
+        txValue++;
+		delay(10); // bluetooth stack will go into congestion, if too many packets are sent
 	}
 
     // disconnecting
